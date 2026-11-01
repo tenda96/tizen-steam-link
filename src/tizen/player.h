@@ -12,7 +12,6 @@
 
 #include "core/counter.h"
 #include "core/session.h"
-#include "core/counter.h"
 
 #include "samsung/html/html_media_element.h"
 #include "samsung/wasm/elementary_media_stream_source.h"
@@ -50,11 +49,10 @@ public:
         uint64_t pipelineErrors = 0;
         int lastPipelineError = -1;
         // Diagnostics: audio timestamp resets (audible gaps), audio lead over the clock, and
-        // the longest gap between video frames and the slowest AppendPacket since the last read.
+        // the longest gap between video frames since the last read.
         uint64_t audioGaps = 0;
         int audioLeadMs = 0;
         int maxFrameGapMs = 0;
-        int maxAppendMs = 0;
     };
 
     // Must be constructed on the browser main thread. videoElementId names a <video>.
@@ -68,6 +66,9 @@ public:
     void SetAudioEnabled(bool enabled) { audioEnabled_ = enabled; }
     // Before the first VideoStart: the video track takes it when it opens.
     void SetFramerate(uint32_t fps) { fps_ = fps > 0 ? fps : 60; }
+    // Before the first stream, for the legacy player: the page keeps its tracks for every stream
+    // (see VideoStart).
+    void SetKeepTracks(bool keep) { keepTracks_ = keep; }
 
     bool SupportsHevc() override { return hevc_; }
     int VideoStart(const IHS_StreamVideoConfig &config) override;
@@ -79,12 +80,11 @@ public:
     void AudioStop() override;
 
     Counters counters();
-    // A stream needed other tracks than the ones the page set up, or setting them up failed:
-    // only a new page (app start) can play it.
+    // With kept tracks, a stream needed other tracks than the ones the page set up: only a new
+    // page (app start) can play it.
     bool restartNeeded() const { return restartNeeded_; }
     // VideoStart has set the tracks up for this page.
     bool setUp() const { return sourceUsed_; }
-
 
     using Seconds = samsung::wasm::Seconds;
 
@@ -158,6 +158,7 @@ private:
     std::mutex mutex_;
     std::condition_variable changed_;
     ReadyState sourceState_ = ReadyState::kDetached;
+    bool keepTracks_ = false;
     // Set up on the first VideoStart and kept for the page: see VideoStart.
     std::atomic<bool> sourceUsed_{false};
     bool sourceOpened_ = false;
@@ -199,7 +200,7 @@ private:
     Counter64 videoSessionChanges_{0}, videoTrackCloses_{0}, pipelineErrors_{0}, audioConcealed_{0};
     std::atomic<int> lastCloseReason_{-1}, lastAppendError_{0}, lastPipelineError_{-1};
     Counter64 audioGaps_{0};
-    std::atomic<int> audioLeadUs_{0}, maxFrameGapUs_{0}, maxAppendUs_{0};
+    std::atomic<int> audioLeadUs_{0}, maxFrameGapUs_{0};
     std::chrono::steady_clock::time_point lastFrame_;
 };
 

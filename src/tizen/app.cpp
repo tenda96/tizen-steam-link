@@ -310,7 +310,7 @@ public:
                ",\"lastPipelineError\":" + std::to_string(c.lastPipelineError) + ",\"audioConcealed\":" +
                std::to_string(c.audioConcealed) + ",\"audioGaps\":" + std::to_string(c.audioGaps) +
                ",\"audioLeadMs\":" + std::to_string(c.audioLeadMs) + ",\"maxFrameGapMs\":" +
-               std::to_string(c.maxFrameGapMs) + ",\"maxAppendMs\":" + std::to_string(c.maxAppendMs) + "}";
+               std::to_string(c.maxFrameGapMs) + "}";
     }
 
     // Client::Listener (ihslib client thread)
@@ -643,7 +643,6 @@ void CancelPair() { g_app->CancelPair(); }
 bool StartStream(const std::string &ip, const std::string &steamId, const std::string &keyHex, int maxWidth,
                  int maxHeight, bool hevc, bool audio, bool bigPicture, int quality, int bitrateKbps, int fps,
                  bool hdr, bool keepPlaying) {
-    IHS_VideoWaitForKeyframe = !keepPlaying;
     StreamParams params;
     params.ip = ip;
     params.steamId = std::strtoull(steamId.c_str(), nullptr, 10);
@@ -660,6 +659,7 @@ bool StartStream(const std::string &ip, const std::string &steamId, const std::s
     params.options.maxWidth = maxWidth;
     params.options.maxHeight = maxHeight;
     params.options.maxFramerate = fps > 60 ? fps : 0;
+    params.options.keepPlayingAfterLoss = keepPlaying;
     return g_app->StartStream(params);
 }
 
@@ -724,7 +724,10 @@ int main() {
              mode == samsung::wasm::EmssLatencyMode::kUltraLow ? "Ultra low" : "Low", tizenVersion,
              hevc ? "HEVC" : "H.264", latency == 1 ? "low" : latency == 2 ? "ultra low" : "automatic");
     tsl::g_app = new tsl::App(mode);
-    if (emss.has_legacy_emss) tsl::g_app->player().SetAudioTiming(tsl::Player::WideAudioTiming());
+    if (emss.has_legacy_emss) {
+        tsl::g_app->player().SetAudioTiming(tsl::Player::WideAudioTiming());
+        tsl::g_app->player().SetKeepTracks(true);
+    }
     EM_ASM({
         if (typeof window.tslReady === 'function') window.tslReady();
     });

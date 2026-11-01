@@ -864,9 +864,7 @@
         return 'loss ' + pct(lost, sent) + ' now, ' + pct(st.videoPacketsLost || 0, total) + ' overall\n' +
             (st.fec ? 'FEC: ' + st.fecRecovered + ' rebuilt, ' + st.fecUnrecoverable + ' lost' : 'FEC: off') +
             '   keyframe requests ' + (st.lostReports || 0) + '\n' +
-            // ihslib reports a garbage value before its first measurement.
-            'round trip ' + (st.roundTripMs > 0 && st.roundTripMs < 10000 ? st.roundTripMs.toFixed(1) + ' ms'
-                : 'not measured yet') + '\n' +
+            'round trip ' + (st.roundTripMs > 0 ? st.roundTripMs.toFixed(1) + ' ms' : 'not measured yet') + '\n' +
             'audio: ' + (st.audioGaps || 0) + ' gaps, ' + (st.audioDropped || 0) + ' dropped, lead ' +
             (st.audioLeadMs || 0) + ' ms   longest frame gap ' + (st.maxFrameGapMs || 0) + ' ms';
     }
@@ -1324,9 +1322,11 @@
             if (!s || s.ending) return;
             s.ending = true;
             clearTimeout(s.timeout);
+            // The legacy player keeps the tracks it tried for the page, so a new try needs an app start.
             s.after = {message: d.restartNeeded
                 ? 'This TV can only change the video format when the app starts. Close the app and open it again.'
-                : 'This TV could not play the stream at these settings. Try 60 fps or a lower resolution.'};
+                : 'This TV could not play the stream at these settings. Try 60 fps or a lower resolution' +
+                    (state.legacyPlayer ? ', then close the app and open it again.' : '.')};
             showStreamStatus('The TV could not play this video', false);
             scheduleEnd(s, 8000, 6000);
         });

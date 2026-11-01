@@ -169,10 +169,12 @@ void Session::CbConfiguring(IHS_Session *, IHS_SessionConfig *config, void *cont
     config->maxHeight = self->options_.maxHeight;
     config->maxFramerate = self->options_.maxFramerate;
     config->enableHdr = self->options_.hdr && config->enableHevc;  // HDR10 comes as HEVC
+    config->keepPlayingAfterLoss = self->options_.keepPlayingAfterLoss;
     Log(IHS_LogLevelInfo, "Session",
-        "Negotiating: audio=%d hevc=%d hdr=%d fec=%d quality=%d bitrate=%d max=%dx%d@%d", config->enableAudio,
-        config->enableHevc, config->enableHdr, config->enableFec, config->quality, config->bitrateKbps,
-        config->maxWidth, config->maxHeight, config->maxFramerate);
+        "Negotiating: audio=%d hevc=%d hdr=%d fec=%d quality=%d bitrate=%d max=%dx%d@%d keepPlaying=%d",
+        config->enableAudio, config->enableHevc, config->enableHdr, config->enableFec, config->quality,
+        config->bitrateKbps, config->maxWidth, config->maxHeight, config->maxFramerate,
+        config->keepPlayingAfterLoss);
 }
 
 void Session::CbConnected(IHS_Session *session, void *context) {

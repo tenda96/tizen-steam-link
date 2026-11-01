@@ -30,16 +30,16 @@ struct TrackChoice {
 };
 
 // The level follows the picture size times the frame rate, highest first. main10: HEVC's 10-bit
-// profile, for HDR. A Q74T (Tizen 5.5) refuses an H.264 level 5.2 track, which 1080p at 120 fps
-// asks for, so lower levels follow, and last the same level at 60 fps: the picture still plays,
-// at the frame rate the TV can show.
+// profile, for HDR. A Q74T (Tizen 5.5) refuses the H.264 level 5.2 track the app asks for at
+// 1080p and 120 fps, so lower levels follow, and last the same level at 60 fps: the picture still
+// plays, at the frame rate the TV can show.
 std::vector<TrackChoice> VideoTrackChoices(const IHS_StreamVideoConfig &config, uint32_t fps, bool main10) {
     uint64_t samples = static_cast<uint64_t>(config.width) * config.height * fps;
     switch (config.codec) {
         case IHS_StreamVideoCodecH264: {
             // Level 4.2 allows 522240 macroblocks a second (1080p at 64 fps); 5.1 allows 983040
-            // (4K30, 1080p at 120 only just not); 5.2 allows 2073600 (4K60, 1080p120). Steam's 4K
-            // H.264 is level 5.1.
+            // (4K30, 1080p120); 5.2 allows 2073600 (4K60). Steam's 4K H.264 is level 5.1. Above
+            // 4.2 the first choice is 5.2, which an S90C plays 1080p120 with.
             uint64_t macroblocks = ((config.width + 15) / 16) * ((config.height + 15) / 16) * static_cast<uint64_t>(fps);
             const char *high52 = "video/mp4; codecs=\"avc1.640034\"";  // High, level 5.2
             const char *high51 = "video/mp4; codecs=\"avc1.640033\"";  // High, level 5.1
@@ -242,19 +242,23 @@ int Player::VideoStart(const IHS_StreamVideoConfig &config) {
         waitKeyframe_ = true;
         lostReported_ = false;
     }
+    // The first frame of a stream is no gap after the last one of the stream before.
+    lastFrame_ = {};
     bool audio = audioEnabled_;
     bool main10 = hdr_ || config.colorspace == IHS_StreamVideoColorspaceHDR10;
-    if (sourceUsed_) {
-        if (sourceOpened_ && openCodec_ == config.codec && openMain10_ == main10 && openAudio_ == audio) {
-            // Same tracks; the frames carry the new size in their SPS, and the track's frame rate
-            // only labels the packets. The clock runs on from the last stream: audio catches up
-            // through AppendPcm.
-            Log(IHS_LogLevelInfo, "Player", "Reusing the open media source");
-            return 0;
-        }
+    if (sourceOpened_ &&
+        (!keepTracks_ || (openCodec_ == config.codec && openMain10_ == main10 && openAudio_ == audio))) {
+        // Same source, same tracks; the frames carry the new size in their SPS, and the track's
+        // frame rate only labels the packets. Kept from an earlier stream, the clock runs on from
+        // it: audio catches up through AppendPcm.
+        Log(IHS_LogLevelInfo, "Player", "Reusing the open media source");
+        return 0;
+    }
+    if (keepTracks_ && sourceUsed_) {
         // Tracks can't change in a page on the legacy player: removing them and adding new ones
         // crashed the browser on a Q74T, dropping them without RemoveTrack() left the source
-        // full, and a reload after a stream hung it. Only a new app start gets new tracks.
+        // full, and a reload after a stream hung it. Only a new app start gets new tracks. That
+        // includes tracks a failed OpenSource left behind.
         Log(IHS_LogLevelError, "Player",
             "The player was set up for codec %d%s, audio %s; this stream needs codec %d%s, audio %s. "
             "Restart the app to change it.",
@@ -270,8 +274,6 @@ int Player::VideoStart(const IHS_StreamVideoConfig &config) {
     openMain10_ = main10;
     openAudio_ = audio;
     if (!OpenSource(config)) {
-        // The tracks it added stay on the source, so another stream in this page can't open.
-        restartNeeded_ = true;
         return -1;
     }
     sourceOpened_ = true;
@@ -320,9 +322,6 @@ IHS_StreamVideoSubmitResult Player::VideoFrame(const uint8_t *data, size_t len, 
             videoSession_.load(),
     };
     auto appended = videoTrack_.AppendPacket(packet);
-    int appendUs = static_cast<int>(
-            std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - arrived).count());
-    if (appendUs > maxAppendUs_) maxAppendUs_ = appendUs;
     if (!appended) {
         uint64_t failed = ++videoFailed_;
         lastAppendError_ = static_cast<int>(appended.operation_result);
@@ -479,7 +478,6 @@ Player::Counters Player::counters() {
     c.audioGaps = audioGaps_.load();
     c.audioLeadMs = audioLeadUs_.load() / 1000;
     c.maxFrameGapMs = maxFrameGapUs_.exchange(0) / 1000;
-    c.maxAppendMs = maxAppendUs_.exchange(0) / 1000;
     return c;
 }
 
